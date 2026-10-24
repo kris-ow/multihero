@@ -1,15 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
-  <rect width="16" height="16" fill="#0b0420"/>
-  <rect x="0" y="11" width="16" height="5" fill="#2a0848"/>
-  <rect x="0" y="11" width="16" height="1" fill="#ff2bd6"/>
-  <g fill="#00f0ff">
-    <rect x="3" y="2" width="2" height="2"/><rect x="11" y="2" width="2" height="2"/>
-    <rect x="5" y="4" width="2" height="2"/><rect x="9" y="4" width="2" height="2"/>
-    <rect x="7" y="6" width="2" height="2"/>
-    <rect x="5" y="8" width="2" height="2"/><rect x="9" y="8" width="2" height="2"/>
-    <rect x="3" y="10" width="2" height="2"/><rect x="11" y="10" width="2" height="2"/>
-  </g>
-  <g fill="#ffe600">
-    <rect x="2" y="13" width="1" height="1"/><rect x="6" y="13" width="4" height="1"/><rect x="13" y="13" width="1" height="1"/>
-  </g>
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+  <radialGradient id="b1" cx="0.5" cy="0.4" r="0.7"><stop offset="0" stop-color="#4a0f7a"/><stop offset="1" stop-color="#07010f"/></radialGradient>
+  <linearGradient id="b2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0848"/><stop offset="1" stop-color="#0b0420"/></linearGradient>
+  <linearGradient id="b3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#ffe600"/><stop offset="0.55" stop-color="#ff8a00"/><stop offset="1" stop-color="#ff2bd6"/></linearGradient>
+  <filter id="b4" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ </defs>
+ <rect width="512" height="512" fill="url(#b1)"/>
+ <path d="M256 52 L428 112 L418 290 Q398 408 256 470 Q114 408 94 290 L84 112 Z" fill="url(#b2)" stroke="#00f0ff" stroke-width="18" stroke-linejoin="round" filter="url(#b4)"/>
+ <path d="M256 92 L392 140 L384 286 Q368 380 256 430 Q144 380 128 286 L120 140 Z" fill="none" stroke="#ff2bd6" stroke-width="6" stroke-linejoin="round"/>
+ <g stroke="url(#b3)" stroke-width="52" filter="url(#b4)"><line x1="178" y1="180" x2="334" y2="336"/><line x1="334" y1="180" x2="178" y2="336"/></g>
 </svg>
