@@ -26,7 +26,7 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/times-turbo
   | Normal | 9s    | 2.6s  | x1     |
   | Hard   | 6s    | 2s    | x1.5   |
 
-- **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score.
+- **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score. Same x1/x10/x2 removal as arcade.
 - **Practice**: one table, 20 questions, no lives, no timeout. Missed facts come back a few
   questions later. Stars: 1 at 70%, 2 at 90%, 3 at 100% with an average under 3s.
 

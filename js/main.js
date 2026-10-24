@@ -152,8 +152,8 @@ function focusPool(level) {
 
 function pickFact() {
   const max = G.cfg.max, pool = G.mode === 'arcade' ? focusPool(G.level) : null;
-  // Once warmed up, the giveaway tables go: x1 and x10 from level 4, x2 as well from level 6.
-  const drop = G.mode !== 'arcade' ? [] : G.level >= 6 ? [1, 2, 10] : G.level >= 4 ? [1, 10] : [];
+  // Once warmed up (arcade and hardcore), the giveaway tables go: x1 and x10 from level 4, x2 from level 6.
+  const drop = G.mode === 'practice' ? [] : G.level >= 6 ? [1, 2, 10] : G.level >= 4 ? [1, 10] : [];
   const cands = [];
   let total = 0;
   for (let a = 1; a <= max; a++) for (let b = a; b <= max; b++) {
