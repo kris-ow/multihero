@@ -16,7 +16,8 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/times-turbo
 
 - **Arcade**: tables up to 10x10, 3 lives, a level every 8 correct answers. The time limit per
   question shrinks each level. Levels 1-3 ease in with the 2, 5 and 10 tables
-  before bringing in the rest. Extra life at levels 4, 7, 10 (max 5). Three speeds that share one
+  before bringing in the rest. From level 4 there are no x1 or x10 questions, and from level 6
+  no x2 either. Extra life at levels 4, 7, 10 (max 5). Three speeds that share one
   board and are tagged E/N/H on it:
 
   | Speed  | Start | Floor | Points |
