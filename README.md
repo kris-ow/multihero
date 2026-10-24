@@ -1,4 +1,4 @@
-# Times Turbo
+# MULTIHERO
 
 80s-arcade multiplication game for the kids. Static site: HTML, CSS and ES modules, no build step,
 no dependencies, no asset files beyond one pixel font. Music and sound effects are synthesised
@@ -9,7 +9,7 @@ with Web Audio.
 Any static file server works (ES modules will not load from `file://`):
 
 ```
-python3 -m http.server 8890 --directory /Users/admin/Projects/times-turbo
+python3 -m http.server 8890 --directory /Users/admin/Projects/multihero
 ```
 
 ## Modes
@@ -38,7 +38,7 @@ At the end, accuracy bonus = `score x 0.5 x accuracy²`.
 
 ## Data
 
-Everything is stored per device in `localStorage` under `times-turbo.v1`: players (3-letter
+Everything is stored per device in `localStorage` under `times-turbo.v1` (the game's original name): players (3-letter
 initials), score lists for arcade and hardcore, practice bests/stars, and per-fact learning stats.
 The fact stats are moving averages of error rate and answer time. Arcade and hardcore pick
 questions weighted towards slow or missed facts, and the MY STATS grid shows them.

@@ -1,7 +1,7 @@
 // Everything lives in one localStorage key, per device. Every access is guarded:
 // private windows and blocked storage must still give a playable (if forgetful) game.
 
-const KEY = 'times-turbo.v1';
+const KEY = 'times-turbo.v1'; // pre-rename name, kept so saved scores survive
 const MAX_SCORES = 300;
 export const COLORS = ['#00f0ff', '#ff2bd6', '#ffe600', '#39ff14', '#ff8a00', '#b48cff'];
 
