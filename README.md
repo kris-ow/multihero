@@ -24,7 +24,7 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/multihero
   |--------|-------|-------|--------|
   | Easy   | 14s   | 5s    | x0.5   |
   | Normal | 9s    | 2.6s  | x1     |
-  | Hard   | 6s    | 2s    | x1.5   |
+  | Hard   | 4.5s  | 1.8s  | x1.5   |
 
 - **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score. Same x1/x10/x2 removal as arcade.
 - **Practice**: one table, 20 questions, no lives, no timeout. Missed facts come back a few

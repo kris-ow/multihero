@@ -133,10 +133,11 @@ const MODES = {
 const DIFFS = {
   easy:   { base: 14, step: 0.8, min: 5, mul: 0.5, bpm: 128, fx: 0.4 },
   normal: {},
-  hard:   { base: 6, step: 0.5, min: 2, mul: 1.5, bpm: 146, fx: 0.8 },
+  hard:   { base: 4.5, step: 0.4, min: 1.8, mul: 1.5, bpm: 146, fx: 0.8 },
 };
 const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
 const PRACTICE_LEN = 20;
+const MAX_DIGITS = 3; // 12 x 12 = 144
 const MAX_LIVES = 5;
 const multFor = streak => Math.min(8, 1 + Math.floor(streak / 5));
 
@@ -234,7 +235,7 @@ function nextQuestion() {
   clearTimeout(G.timer);
   if (G.mode === 'practice' && G.qi >= G.deck.length) { finish(); return; }
   const [a, b] = G.mode === 'practice' ? G.deck[G.qi++] : pickFact();
-  G.q = { a, b, ans: a * b, len: String(a * b).length };
+  G.q = { a, b, ans: a * b };
   G.input = '';
   G.limit = timeLimit();
   G.qStart = performance.now();
@@ -251,20 +252,24 @@ function nextQuestion() {
 
 function renderAnswer() {
   const box = $('#g-a');
-  let html = '';
-  for (let i = 0; i < G.q.len; i++) html += `<span class="${i === G.input.length ? 'cur' : ''}">${G.input[i] || ''}</span>`;
-  box.innerHTML = html;
+  // One fixed-width field: it must not hint how many digits the answer has.
+  box.innerHTML = `<span class="field">${G.input}<i class="caret"></i></span>`;
 }
 
 function digit(d) {
   if (!G || screen !== 'game') return;
   if (G.phase === 'feedback' && performance.now() >= G.skipAfter && G.lives > 0) nextQuestion();
   if (G.phase !== 'ask') return;
-  if (G.input.length >= G.q.len) return;
+  if (G.input.length >= MAX_DIGITS) return;
   G.input += d;
   Audio.sfx('key');
   renderAnswer();
-  if (G.input.length === G.q.len) submit(false);
+  if (G.input.length === MAX_DIGITS) submit(false); // nothing longer exists, so this leaks nothing
+}
+
+function enter() {
+  if (!G || G.phase !== 'ask' || !G.input) return;
+  submit(false);
 }
 
 function backspace() {
@@ -633,16 +638,16 @@ function press(el) {
 
 function buildKeypad() {
   const pad = $('#keypad');
-  for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'DEL']) {
+  for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DEL', '0', 'OK']) {
     const b = document.createElement('button');
-    b.className = 'key' + (k === '0' ? ' zero' : '') + (k === 'DEL' ? ' del' : '');
+    b.className = 'key' + (k === 'DEL' ? ' del' : '') + (k === 'OK' ? ' ok' : '');
     b.textContent = k;
     b.dataset.key = k;
     // pointerdown, not click: fires on touch contact, which is what makes it feel instant
     b.addEventListener('pointerdown', e => {
       e.preventDefault();
       press(b);
-      if (k === 'DEL') backspace(); else digit(k);
+      if (k === 'DEL') backspace(); else if (k === 'OK') enter(); else digit(k);
     });
     pad.appendChild(b);
   }
@@ -717,6 +722,7 @@ document.addEventListener('keydown', e => {
       digit(k);
       const b = document.querySelector(`.key[data-key="${k}"]`); if (b) press(b);
     } else if (k === 'Backspace') { backspace(); e.preventDefault(); }
+    else if (k === 'Enter' && G?.phase === 'ask') { enter(); const b = document.querySelector('.key.ok'); if (b) press(b); }
     else if (k === 'Escape' || k === 'p' || k === 'P') { G?.phase === 'paused' ? resume() : pause(); }
     else if (k === 'Enter' && G?.phase === 'paused') resume();
     return;
