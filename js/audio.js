@@ -111,10 +111,63 @@ function pad(t, notes, dur, dest, vol = 0.035) {
   }
 }
 
-// Lead: square with delayed vibrato, sent through the echo.
-function lead(t, m, dur, dest, vol) {
+// Synth-brass stab: detuned saws with a filter that snaps shut.
+function stab(t, notes, dur, dest, vol = 0.05) {
+  const f = lowpass(3200, 2), g = ctx.createGain();
+  f.frequency.setValueAtTime(3200, t);
+  f.frequency.exponentialRampToValueAtTime(500, t + 0.18);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
+  g.gain.setValueAtTime(vol * 0.7, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  f.connect(g).connect(dest);
+  for (const m of notes) for (const dt of [-12, 12]) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = mtof(m);
+    o.detune.value = dt;
+    o.connect(f);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+}
+
+// Overdriven guitar: power-chord saws summed into a tanh waveshaper and a speaker-cab lowpass.
+function amp() {
+  const shaper = ctx.createWaveShaper(), n = 1024, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; curve[i] = Math.tanh(x * 9); }
+  shaper.curve = curve; shaper.oversample = '4x';
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90;
+  const cab = lowpass(3000, 0.9), cab2 = lowpass(4500, 0.7), g = ctx.createGain();
+  g.gain.value = 0.14;
+  hp.connect(shaper).connect(cab).connect(cab2).connect(g);
+  return { input: hp, output: g };
+}
+
+// Power chord (root, fifth, octave). Muted = short and dark, like a palm-muted chug.
+function guitar(t, root, dur, dest, muted = false) {
+  const g = ctx.createGain(), f = lowpass(muted ? 700 : 5000, 0.7);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.35, t + 0.004);
+  g.gain.setValueAtTime(0.3, t + dur * 0.75);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  f.connect(g).connect(dest);
+  for (const [iv, dt] of [[0, -6], [7, 5], [12, 0]]) {
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = mtof(root + iv);
+    o.detune.value = dt;
+    o.connect(f);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+}
+
+const tom = (t, f, d) => tone(t, f, 0.22, { wave: 'sine', vol: 0.7, slide: f * 0.5, dest: d });
+const crash = (t, d) => noise(t, 1.4, { vol: 0.12, hp: 4500, dest: d });
+
+// Lead: square (or saw) with delayed vibrato, sent through the echo.
+function lead(t, m, dur, dest, vol, wave = 'square') {
   const o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), depth = ctx.createGain();
-  o.type = 'square';
+  o.type = wave;
   o.frequency.value = mtof(m);
   lfo.frequency.value = 5.5;
   depth.gain.setValueAtTime(0, t);
@@ -162,17 +215,17 @@ const CHORDS = {
 
 const SONGS = {
   title: {
-    bpm: 100, style: 'title',
-    chords: ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'E'],
+    bpm: 150, style: 'action',
+    chords: ['Am', 'Am', 'F', 'G', 'Am', 'Am', 'F', 'E'],
     lead: parse([
-      'A4 - - - C5 - - - E5 - - - D5 - C5 -',
-      'C5 - - - A4 - - - F4 - - - A4 - - -',
-      'G4 - - - C5 - - - E5 - - - G5 - - -',
-      'F5 - E5 - D5 - - - B4 - - - . . . .',
-      'A4 - - - C5 - - - E5 - - - A5 - - -',
-      'A5 - G5 - F5 - - - C5 - - - A4 - - -',
-      'G4 - - - C5 - E5 - G5 - - - E5 - C5 -',
-      'B4 - - - - - - - G#4 - - - - - - -',
+      'A4 - - - - - E4 - A4 - B4 - C5 - - -',
+      'B4 - A4 - G4 - A4 - - - - - . . . .',
+      'F4 - - - A4 - C5 - F5 - - - E5 - D5 -',
+      'D5 - - - B4 - - - G4 - A4 - B4 - D5 -',
+      'E5 - - - - - D5 - C5 - - - B4 - C5 -',
+      'A4 - - - - - - - . . A4 - C5 - E5 -',
+      'F5 - - - E5 - - - D5 - - - C5 - D5 -',
+      'E5 - - - - - - - G#4 - - - B4 - - -',
     ]),
   },
   game: {
@@ -202,7 +255,8 @@ function mixer() {
   fb.gain.value = 0.33; wet.gain.value = 0.3;
   echo.connect(dark).connect(fb).connect(echo);
   dark.connect(wet).connect(out);
-  const m = { out, echo, drums: out, bass: bus(2400, 0.7), pad: bus(1300, 1), lead: bus(2800, 1.5), arp: bus(2200, 0.7, 0.8) };
+  const gtr = amp(); gtr.output.connect(out);
+  const m = { out, echo, drums: out, gtr: gtr.input, bass: bus(2400, 0.7), pad: bus(1300, 1), lead: bus(2800, 1.5), arp: bus(2200, 0.7, 0.8) };
   m.lead.connect(echo); m.arp.connect(echo);
   return m;
 }
@@ -220,6 +274,19 @@ function scheduleStep(s, t) {
     if (i === 4 || i === 12) { snare(t, m.drums); clap(t, m.drums); }
     if (i % 4 === 2) hat(t, m.drums, 0.07);
     if (intensity > 3 && i % 2 === 1) hat(t, m.drums, 0.035);
+  } else if (song.def.style === 'action') {
+    // synth rock: palm-muted chugs with open accents, synth stabs on top, rock beat, tom fill every 4th bar
+    const accent = i === 0 || i === 6 || i === 10;
+    if (accent) guitar(t, ch.root, sd * (i === 10 ? 5.5 : 3.5), m.gtr);
+    else if (i % 2 === 0) guitar(t, ch.root, sd * 0.9, m.gtr, true);
+    if (i % 2 === 0) bass(t, ch.root, sd * 1.8, m.bass, 0.28);
+    if ([0, 6, 10].includes(i)) stab(t, ch.pad.map(n => n + 12), sd * (i === 10 ? 4 : 2), m.pad, 0.025);
+    const fill = bar % 4 === 3 && i >= 12;
+    if ((i === 0 || i === 8 || i === 10) && !fill) kick(t, m.drums);
+    if ((i === 4 || i === 12) && !fill) { snare(t, m.drums); clap(t, m.drums); }
+    if (fill) tom(t, [220, 175, 140, 110][i - 12], m.drums);
+    if (i % 2 === 0) hat(t, m.drums, 0.05);
+    if (i === 0 && bar % 4 === 0) crash(t, m.drums);
   } else {
     if (i === 0) pad(t, ch.pad, sd * 16, m.pad, 0.04);
     if (i === 0 || i === 6 || i === 10 || i === 14) bass(t, ch.root + (i === 10 ? 12 : 0), sd * (i === 0 ? 5 : 3), m.bass, 0.3);
@@ -229,7 +296,10 @@ function scheduleStep(s, t) {
     if (i % 4 === 2) hat(t, m.drums, 0.04);
   }
   const n = song.def.lead[bar][i];
-  if (n) lead(t, n[0], n[1] * sd * 0.95, m.lead, song.def.style === 'game' ? 0.11 : 0.09);
+  if (n) {
+    if (song.def.style === 'action') { lead(t, n[0], n[1] * sd * 0.95, m.lead, 0.07, 'sawtooth'); lead(t, n[0] - 12, n[1] * sd * 0.95, m.lead, 0.05, 'square'); }
+    else lead(t, n[0], n[1] * sd * 0.95, m.lead, song.def.style === 'game' ? 0.11 : 0.09);
+  }
 }
 
 function pump() {
