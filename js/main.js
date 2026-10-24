@@ -125,10 +125,17 @@ function renderTables() {
 
 // ---------- game ----------
 const MODES = {
-  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.6, perLevel: 8, mul: 1 },
-  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 1.5 },
-  practice: { lives: Infinity, base: 6, mul: 1 },
+  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.6, perLevel: 8, mul: 1, bpm: 140, fx: 0.6 },
+  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 1.5, bpm: 152, fx: 0.9 },
+  practice: { lives: Infinity, base: 6, mul: 1, bpm: 140, fx: 0.6 },
 };
+// Arcade difficulty: more thinking time costs points, so all three can share one board.
+const DIFFS = {
+  easy:   { base: 14, step: 0.8, min: 5, mul: 0.5, bpm: 126, fx: 0.4 },
+  normal: {},
+  hard:   { base: 6, step: 0.5, min: 2, mul: 1.5, bpm: 150, fx: 0.8 },
+};
+const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
 const PRACTICE_LEN = 20;
 const MAX_LIVES = 5;
 const multFor = streak => Math.min(8, 1 + Math.floor(streak / 5));
@@ -181,18 +188,18 @@ const timeLimit = () => G.cfg.practice || G.mode === 'practice'
   ? G.cfg.base
   : Math.max(G.cfg.min, G.cfg.base - (G.level - 1) * G.cfg.step);
 
-function startGame(mode, table = 0) {
+function startGame(mode, table = 0, diff = 'normal') {
   const p = Store.currentPlayer();
   if (!p) { openNew(); return; }
   clearTimeout(G?.timer);
   G = {
-    mode, table, cfg: MODES[mode], pid: p.id, name: p.name,
+    mode, table, diff, cfg: mode === 'arcade' ? { ...MODES.arcade, ...DIFFS[diff] } : MODES[mode], pid: p.id, name: p.name,
     lives: MODES[mode].lives, level: 1, score: 0, streak: 0, bestStreak: 0,
     correct: 0, wrong: 0, times: [], missed: [], recent: [],
     deck: mode === 'practice' ? buildDeck(table) : null, qi: 0, requeued: 0,
     input: '', phase: 'ready', timer: null, token: {},
   };
-  lastGame = { mode, table };
+  lastGame = { mode, table, diff };
   $('#keypad').style.visibility = 'visible';
   $('#g-q').textContent = '';
   $('#g-a').innerHTML = '';
@@ -201,15 +208,15 @@ function startGame(mode, table = 0) {
   renderHUD();
   show('game');
   Audio.playSong('game');
-  Audio.setLevel(1, mode === 'hardcore');
-  FX.setSpeed(mode === 'hardcore' ? 0.9 : 0.6);
+  Audio.setLevel(1, G.cfg.bpm);
+  FX.setSpeed(G.cfg.fx);
   countdown(G.token);
 }
 
 async function countdown(token) {
   const wait = ms => new Promise(r => setTimeout(r, ms));
-  const label = G.mode === 'practice' ? `${G.table} TIMES TABLE` : G.mode === 'hardcore' ? 'HARDCORE!' : 'READY?';
-  banner(label, G.mode === 'hardcore' ? 'red' : 'mag', 900);
+  const label = G.mode === 'practice' ? `${G.table} TIMES TABLE` : G.mode === 'hardcore' ? 'HARDCORE!' : `${G.diff.toUpperCase()}!`;
+  banner(label, G.mode === 'hardcore' || G.diff === 'hard' ? 'red' : G.diff === 'easy' ? 'lime' : 'mag', 900);
   Audio.sfx('count');
   await wait(900);
   if (G?.token !== token) return;
@@ -361,8 +368,8 @@ function levelUp() {
   G.level++;
   banner(`LEVEL ${G.level}`, '', 1100);
   Audio.sfx('level');
-  Audio.setLevel(G.level, G.mode === 'hardcore');
-  FX.setSpeed((G.mode === 'hardcore' ? 0.9 : 0.6) + (G.level - 1) * 0.3);
+  Audio.setLevel(G.level, G.cfg.bpm);
+  FX.setSpeed(G.cfg.fx + (G.level - 1) * 0.3);
   if ((G.level - 1) % 3 === 0 && G.lives < MAX_LIVES) {
     G.lives++;
     G.gained = true;
@@ -487,11 +494,11 @@ async function results() {
     stars = practiceStars(acc, avg);
     rec = Store.recordPractice(g.pid, g.table, total, stars);
   } else {
-    rec = Store.recordScore(g.mode, { pid: g.pid, name: g.name, score: total, level: g.level, acc: Math.round(acc * 100) });
+    rec = Store.recordScore(g.mode, { pid: g.pid, name: g.name, score: total, level: g.level, acc: Math.round(acc * 100), ...(g.mode === 'arcade' && { diff: g.diff }) });
   }
   lastGame.entryId = rec.id;
 
-  $('#r-title').textContent = g.mode === 'practice' ? `${g.table} TIMES TABLE` : g.mode === 'hardcore' ? 'HARDCORE RESULTS' : 'RESULTS';
+  $('#r-title').textContent = g.mode === 'practice' ? `${g.table} TIMES TABLE` : g.mode === 'hardcore' ? 'HARDCORE RESULTS' : `${g.diff.toUpperCase()} RESULTS`;
   const lines = $('#r-lines'), totalEl = $('#r-total'), badges = $('#r-badges'), missed = $('#r-missed');
   lines.innerHTML = ''; totalEl.textContent = ''; badges.innerHTML = ''; missed.innerHTML = '';
   $('#r-buttons').classList.remove('on');
@@ -585,7 +592,7 @@ function renderScores() {
     const pl = Store.playerById(s.pid);
     const d = new Date(s.date);
     const date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-    return `<li class="${s.id === lastGame?.entryId ? 'fresh' : ''}"><span class="rk">${i + 1}.</span><span style="color:${pl?.color || '#8a7ab8'}">${s.name}</span><span class="sc">${fmt(s.score)}</span><span class="mt">L${s.level} ${s.acc}%<br>${date}</span></li>`;
+    return `<li class="${s.id === lastGame?.entryId ? 'fresh' : ''}"><span class="rk">${i + 1}.</span><span style="color:${pl?.color || '#8a7ab8'}">${s.name}</span><span class="sc">${fmt(s.score)}</span><span class="mt">${s.diff ? DIFF_TAG[s.diff] + ' ' : ''}L${s.level} ${s.acc}%<br>${date}</span></li>`;
   }).join('');
 }
 
@@ -645,7 +652,11 @@ const actions = {
   cancelnew: () => { renderPlayers(); show('players'); },
   saveplayer: savePlayer,
   menu: goMenu,
-  arcade: () => startGame('arcade'),
+  arcade: () => {
+    if (!Store.currentPlayer()) return openNew();
+    show('arcade');
+    if (!coarse) $(`#s-arcade [data-diff="${Store.settings().diff || 'normal'}"]`).focus({ preventScroll: true });
+  },
   hardcore: () => startGame('hardcore'),
   practice: () => { if (!Store.currentPlayer()) return openNew(); renderTables(); show('practice'); },
   scores: () => { scScope = 'me'; renderScores(); show('scores'); },
@@ -654,7 +665,7 @@ const actions = {
   music: () => { const v = !Store.settings().music; Store.setSetting('music', v); Audio.setMusic(v); refreshMenu(); },
   sfx: () => { const v = !Store.settings().sfx; Store.setSetting('sfx', v); Audio.setSfx(v); refreshMenu(); },
   pause, resume, quit,
-  again: () => startGame(lastGame.mode, lastGame.table),
+  again: () => startGame(lastGame.mode, lastGame.table, lastGame.diff),
 };
 const QUIET = new Set(['pause', 'resume', 'quit', 'menu', 'cancelnew', 'saveplayer']);
 
@@ -666,6 +677,13 @@ document.addEventListener('click', e => {
     if (!QUIET.has(el.dataset.act)) Audio.sfx('select');
     else if (el.dataset.act !== 'saveplayer') Audio.sfx('back');
     actions[el.dataset.act]();
+    return;
+  }
+  const dif = e.target.closest('[data-diff]');
+  if (dif) {
+    Audio.sfx('select');
+    Store.setSetting('diff', dif.dataset.diff);
+    startGame('arcade', 0, dif.dataset.diff);
     return;
   }
   const tab = e.target.closest('.tab');

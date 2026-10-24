@@ -189,9 +189,9 @@ export function playSong(name) {
   if (name) startSong(name); else stopSong();
 }
 
-export function setLevel(level, hard = false) {
+export function setLevel(level, base = 140) {
   intensity = level;
-  if (current === 'game') bpm = Math.min(196, (hard ? 152 : 140) + (level - 1) * 6);
+  if (current === 'game') bpm = Math.min(196, base + (level - 1) * 6);
 }
 
 // ---------- SFX ----------

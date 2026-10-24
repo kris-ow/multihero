@@ -15,8 +15,16 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/times-turbo
 ## Modes
 
 - **Arcade**: tables up to 10x10, 3 lives, a level every 8 correct answers. The time limit per
-  question shrinks each level (9s down to 2.6s). Levels 1-3 ease in with the 2, 5 and 10 tables
-  before bringing in the rest. Extra life at levels 4, 7, 10 (max 5).
+  question shrinks each level. Levels 1-3 ease in with the 2, 5 and 10 tables
+  before bringing in the rest. Extra life at levels 4, 7, 10 (max 5). Three speeds that share one
+  board and are tagged E/N/H on it:
+
+  | Speed  | Start | Floor | Points |
+  |--------|-------|-------|--------|
+  | Easy   | 14s   | 5s    | x0.5   |
+  | Normal | 9s    | 2.6s  | x1     |
+  | Hard   | 6s    | 2s    | x1.5   |
+
 - **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score.
 - **Practice**: one table, 20 questions, no lives, no timeout. Missed facts come back a few
   questions later. Stars: 1 at 70%, 2 at 90%, 3 at 100% with an average under 3s.
