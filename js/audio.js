@@ -1,5 +1,5 @@
-// All sound is synthesised: an 80s synthwave band (filtered saw bass, detuned pad, square lead
-// with vibrato and tape-style echo, drum machine) on a lookahead sequencer, plus SFX.
+// All sound is synthesised: an 80s synth rock band (overdriven power-chord guitar, filtered saw
+// bass, brass stabs, saw lead with vibrato and echo, drum machine) on a lookahead sequencer, plus SFX.
 // Nothing plays until unlock() runs inside a user gesture (iOS and Chrome autoplay rules).
 
 let ctx = null, master, musicBus, sfxBus, noiseBuf, P25;
@@ -93,22 +93,6 @@ function bass(t, m, dur, dest, vol = 0.34) {
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(f).connect(g).connect(dest);
   o.start(t); o.stop(t + dur + 0.02);
-}
-
-// Soft chord bed: two detuned saws per note, slow attack, filtered dark.
-function pad(t, notes, dur, dest, vol = 0.035) {
-  for (const m of notes) for (const dt of [-9, 9]) {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sawtooth';
-    o.frequency.value = mtof(m);
-    o.detune.value = dt;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(vol, t + 0.25);
-    g.gain.setValueAtTime(vol, t + dur - 0.2);
-    g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.15);
-    o.connect(g).connect(dest);
-    o.start(t); o.stop(t + dur + 0.2);
-  }
 }
 
 // Synth-brass stab: detuned saws with a filter that snaps shut.
@@ -215,7 +199,7 @@ const CHORDS = {
 
 const SONGS = {
   title: {
-    bpm: 150, style: 'action',
+    bpm: 150,
     chords: ['Am', 'Am', 'F', 'G', 'Am', 'Am', 'F', 'E'],
     lead: parse([
       'A4 - - - - - E4 - A4 - B4 - C5 - - -',
@@ -229,17 +213,17 @@ const SONGS = {
     ]),
   },
   game: {
-    bpm: 132, style: 'game',
-    chords: ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'G'],
+    bpm: 138, builds: true,
+    chords: ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'E'],
     lead: parse([
-      'E4 - A4 - B4 - C5 - B4 - A4 - E4 - - -',
-      'F4 - A4 - C5 - A4 - F4 - C5 - A4 - - -',
-      'G4 - E4 - G4 - C5 - D5 - C5 - G4 - E4 -',
-      'D5 - - - B4 - G4 - B4 - D5 - G4 - - -',
-      'A4 . A4 . C5 - B4 - A4 - G4 - A4 - - -',
-      'F4 - G4 - A4 - C5 - A4 - G4 - F4 - - -',
-      'E4 - G4 - C5 - E5 - D5 - C5 - B4 - G4 -',
+      'A4 - A4 - C5 - A4 - D5 - C5 - A4 - G4 -',
+      'A4 - - - F4 - - - C5 - - - A4 - - -',
+      'G4 - G4 - C5 - G4 - E5 - D5 - C5 - G4 -',
       'B4 - - - D5 - - - G4 - A4 - B4 - D5 -',
+      'E5 - E5 - D5 - C5 - D5 - C5 - A4 - - -',
+      'C5 - - - A4 - - - F4 - A4 - C5 - - -',
+      'E5 - - - D5 - - - C5 - - - G4 - - -',
+      'G#4 - - - B4 - - - E5 - - - D5 - B4 -',
     ]),
   },
 };
@@ -261,44 +245,33 @@ function mixer() {
   return m;
 }
 
+// Synth rock: palm-muted power-chord chugs with open accents, synth stabs, rock beat, tom fill
+// every 4th bar. Songs marked `builds` add layers as the level (intensity) rises.
 function scheduleStep(s, t) {
   const bar = Math.floor(s / 16) % song.def.lead.length, i = s % 16;
   const ch = CHORDS[song.def.chords[bar]];
-  const sd = 60 / bpm / 4, m = song.mix;
+  const sd = 60 / bpm / 4, m = song.mix, builds = song.def.builds;
 
-  if (song.def.style === 'game') {
-    if (i === 0) pad(t, ch.pad, sd * 16, m.pad, 0.028);
-    if (i % 2 === 0) bass(t, ch.root + (i % 4 === 2 ? 12 : 0), sd * 1.8, m.bass);
-    if (intensity > 1) tone(t, mtof(ch.arp[s % 4]), sd * 0.9, { wave: 'triangle', vol: 0.09, dest: m.arp });
-    if (i % 4 === 0) kick(t, m.drums);
-    if (i === 4 || i === 12) { snare(t, m.drums); clap(t, m.drums); }
-    if (i % 4 === 2) hat(t, m.drums, 0.07);
-    if (intensity > 3 && i % 2 === 1) hat(t, m.drums, 0.035);
-  } else if (song.def.style === 'action') {
-    // synth rock: palm-muted chugs with open accents, synth stabs on top, rock beat, tom fill every 4th bar
-    const accent = i === 0 || i === 6 || i === 10;
-    if (accent) guitar(t, ch.root, sd * (i === 10 ? 5.5 : 3.5), m.gtr);
-    else if (i % 2 === 0) guitar(t, ch.root, sd * 0.9, m.gtr, true);
-    if (i % 2 === 0) bass(t, ch.root, sd * 1.8, m.bass, 0.28);
-    if ([0, 6, 10].includes(i)) stab(t, ch.pad.map(n => n + 12), sd * (i === 10 ? 4 : 2), m.pad, 0.025);
-    const fill = bar % 4 === 3 && i >= 12;
-    if ((i === 0 || i === 8 || i === 10) && !fill) kick(t, m.drums);
-    if ((i === 4 || i === 12) && !fill) { snare(t, m.drums); clap(t, m.drums); }
-    if (fill) tom(t, [220, 175, 140, 110][i - 12], m.drums);
-    if (i % 2 === 0) hat(t, m.drums, 0.05);
-    if (i === 0 && bar % 4 === 0) crash(t, m.drums);
-  } else {
-    if (i === 0) pad(t, ch.pad, sd * 16, m.pad, 0.04);
-    if (i === 0 || i === 6 || i === 10 || i === 14) bass(t, ch.root + (i === 10 ? 12 : 0), sd * (i === 0 ? 5 : 3), m.bass, 0.3);
-    if (i % 2 === 0) tone(t, mtof(ch.arp[(s / 2) % 4] + 12), sd * 1.5, { wave: 'triangle', vol: 0.07, dest: m.arp });
-    if (i === 0 || i === 10) kick(t, m.drums);
-    if (i === 8) { snare(t, m.drums); clap(t, m.drums); }
-    if (i % 4 === 2) hat(t, m.drums, 0.04);
-  }
+  const accent = i === 0 || i === 6 || i === 10;
+  if (accent) guitar(t, ch.root, sd * (i === 10 ? 5.5 : 3.5), m.gtr);
+  else if (i % 2 === 0) guitar(t, ch.root, sd * 0.9, m.gtr, true);
+  if (i % 2 === 0) bass(t, ch.root, sd * 1.8, m.bass, 0.28);
+  if (accent) stab(t, ch.pad.map(n => n + 12), sd * (i === 10 ? 4 : 2), m.pad, 0.025);
+  if (builds && intensity > 1) tone(t, mtof(ch.arp[s % 4] + 12), sd * 0.9, { wave: 'triangle', vol: 0.07, dest: m.arp });
+
+  const fill = bar % 4 === 3 && i >= 12;
+  const fourFloor = builds && intensity >= 5;
+  if ((fourFloor ? i % 4 === 0 : i === 0 || i === 8 || i === 10) && !fill) kick(t, m.drums);
+  if ((i === 4 || i === 12) && !fill) { snare(t, m.drums); clap(t, m.drums); }
+  if (fill) tom(t, [220, 175, 140, 110][i - 12], m.drums);
+  if (i % 2 === 0) hat(t, m.drums, 0.05);
+  else if (builds && intensity > 3) hat(t, m.drums, 0.03);
+  if (i === 0 && bar % 4 === 0) crash(t, m.drums);
+
   const n = song.def.lead[bar][i];
   if (n) {
-    if (song.def.style === 'action') { lead(t, n[0], n[1] * sd * 0.95, m.lead, 0.07, 'sawtooth'); lead(t, n[0] - 12, n[1] * sd * 0.95, m.lead, 0.05, 'square'); }
-    else lead(t, n[0], n[1] * sd * 0.95, m.lead, song.def.style === 'game' ? 0.11 : 0.09);
+    lead(t, n[0], n[1] * sd * 0.95, m.lead, 0.07, 'sawtooth');
+    lead(t, n[0] - 12, n[1] * sd * 0.95, m.lead, 0.05, 'square');
   }
 }
 
@@ -338,10 +311,10 @@ export function playSong(name) {
   if (name) startSong(name); else stopSong();
 }
 
-export function setLevel(level, base = 132) {
+export function setLevel(level, base = 138) {
   intensity = level;
   if (current !== 'game') return;
-  bpm = Math.min(180, base - 8 + (level - 1) * 5);
+  bpm = Math.min(180, base + (level - 1) * 5);
   song.mix.echo.delayTime.setTargetAtTime(0.75 * 60 / bpm, ctx.currentTime, 0.1);
 }
 

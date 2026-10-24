@@ -125,15 +125,15 @@ function renderTables() {
 
 // ---------- game ----------
 const MODES = {
-  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.6, perLevel: 8, mul: 1, bpm: 140, fx: 0.6 },
-  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 1.5, bpm: 152, fx: 0.9 },
-  practice: { lives: Infinity, base: 6, mul: 1, bpm: 140, fx: 0.6 },
+  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.6, perLevel: 8, mul: 1, bpm: 138, fx: 0.6 },
+  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 1.5, bpm: 150, fx: 0.9 },
+  practice: { lives: Infinity, base: 6, mul: 1, bpm: 132, fx: 0.6 },
 };
 // Arcade difficulty: more thinking time costs points, so all three can share one board.
 const DIFFS = {
-  easy:   { base: 14, step: 0.8, min: 5, mul: 0.5, bpm: 126, fx: 0.4 },
+  easy:   { base: 14, step: 0.8, min: 5, mul: 0.5, bpm: 128, fx: 0.4 },
   normal: {},
-  hard:   { base: 6, step: 0.5, min: 2, mul: 1.5, bpm: 150, fx: 0.8 },
+  hard:   { base: 6, step: 0.5, min: 2, mul: 1.5, bpm: 146, fx: 0.8 },
 };
 const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
 const PRACTICE_LEN = 20;
