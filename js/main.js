@@ -136,7 +136,6 @@ const DIFFS = {
   hard:   { base: 4.5, step: 0.4, min: 1.8, mul: 1.5, bpm: 146, fx: 0.8 },
 };
 const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
-const PRACTICE_LEN = 20;
 const MAX_LIVES = 5;
 const multFor = streak => Math.min(8, 1 + Math.floor(streak / 5));
 
@@ -174,17 +173,17 @@ function pickFact() {
   return Math.random() < 0.5 ? [pick[0], pick[1]] : [pick[1], pick[0]];
 }
 
+// Every fact of the table once each way round (the square only once), shuffled so a fact and its
+// reverse are not back to back.
 function buildDeck(table) {
-  const top = table > 10 ? 12 : 10;
-  const ms = [];
-  while (ms.length < PRACTICE_LEN) {
-    const round = [];
-    for (let m = 1; m <= top; m++) round.push(m);
-    for (let i = round.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [round[i], round[j]] = [round[j], round[i]]; }
-    if (ms.length && round[0] === ms[ms.length - 1]) round.push(round.shift());
-    ms.push(...round);
+  const top = table > 10 ? 12 : 10, deck = [];
+  for (let m = 1; m <= top; m++) { deck.push([table, m]); if (m !== table) deck.push([m, table]); }
+  const other = q => q[0] === table ? q[1] : q[0];
+  for (let tries = 0; tries < 50; tries++) {
+    for (let i = deck.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [deck[i], deck[j]] = [deck[j], deck[i]]; }
+    if (deck.every((q, i) => !i || other(q) !== other(deck[i - 1]))) break;
   }
-  return ms.slice(0, PRACTICE_LEN).map(m => (Math.random() < 0.7 ? [table, m] : [m, table]));
+  return deck;
 }
 
 const timeLimit = () => G.cfg.practice || G.mode === 'practice'
@@ -199,15 +198,16 @@ function startGame(mode, table = 0, diff = 'normal') {
     mode, table, diff, cfg: mode === 'arcade' ? { ...MODES.arcade, ...DIFFS[diff] } : MODES[mode], pid: p.id, name: p.name,
     lives: MODES[mode].lives, level: 1, score: 0, streak: 0, bestStreak: 0,
     correct: 0, wrong: 0, times: [], missed: [], recent: [],
-    deck: mode === 'practice' ? buildDeck(table) : null, qi: 0, requeued: 0,
+    deck: mode === 'practice' ? buildDeck(table) : null, qi: 0,
     input: '', phase: 'ready', timer: null, token: {},
   };
+  G.facts = G.deck ? G.deck.length : 0;
   lastGame = { mode, table, diff };
   $('#keypad').style.visibility = 'visible';
   $('#g-q').textContent = '';
   $('#g-a').innerHTML = '';
   $('#g-pauseov').classList.remove('on');
-  $('.timer').classList.toggle('off', false);
+  $('.timer').classList.toggle('off', mode === 'practice'); // practice is untimed, so no bar
   renderHUD();
   show('game');
   Audio.playSong(mode === 'hardcore' ? 'hardcore' : 'game');
@@ -335,7 +335,8 @@ function onCorrect(t) {
 
   if (G.mode !== 'practice' && G.correct % G.cfg.perLevel === 0) levelUp();
   renderHUD(true);
-  G.timer = setTimeout(nextQuestion, 280);
+  // Practice ends once every fact has been answered right.
+  G.timer = setTimeout(G.mode === 'practice' && G.correct >= G.facts ? finish : nextQuestion, 280);
 }
 
 function onWrong(timedOut) {
@@ -345,11 +346,8 @@ function onWrong(timedOut) {
   G.phase = 'feedback';
   G.skipAfter = performance.now() + 500;
   if (G.mode !== 'practice') G.lives--;
-  else if (G.requeued < 6) {
-    // Missed facts come back a few questions later in practice.
-    G.deck.splice(Math.min(G.qi + 3, G.deck.length), 0, [G.q.a, G.q.b]);
-    G.requeued++;
-  }
+  // Missed facts come back a few questions later in practice, until they are answered right.
+  else G.deck.splice(Math.min(G.qi + 3, G.deck.length), 0, [G.q.a, G.q.b]);
 
   const q = $('#g-q');
   q.classList.add('reveal');
@@ -386,7 +384,7 @@ function renderHUD(bump = false) {
 
   const lives = $('#g-lives');
   if (G.mode === 'practice') {
-    lives.innerHTML = `<span class="lbl">${Math.min(G.qi, G.deck.length)}/${G.deck.length}</span>`;
+    lives.innerHTML = `<span class="lbl">${G.correct}/${G.facts}</span>`;
     $('#g-level').textContent = `${G.table} TABLE`;
   } else {
     const slots = Math.max(G.cfg.lives, G.lives);
@@ -473,8 +471,9 @@ function finish() {
 }
 
 // ---------- results ----------
-function practiceStars(acc, avg) {
-  if (acc >= 1 && avg <= 3) return 3;
+// Practice stars count first-try accuracy only, so being slow never costs a star.
+function practiceStars(acc) {
+  if (acc >= 1) return 3;
   if (acc >= 0.9) return 2;
   if (acc >= 0.7) return 1;
   return 0;
@@ -484,7 +483,9 @@ async function results() {
   const g = G;
   const token = g.token;
   const answered = g.correct + g.wrong;
-  const acc = answered ? g.correct / answered : 0;
+  // Practice: the share of facts right first time (every fact is answered right in the end).
+  const firstTry = g.mode === 'practice' ? g.facts - new Set(g.missed.map(q => q.join('x'))).size : 0;
+  const acc = g.mode === 'practice' ? firstTry / g.facts : answered ? g.correct / answered : 0;
   const bonus = Math.round(g.score * 0.5 * acc * acc / 10) * 10;
   const total = g.score + bonus;
   const avg = g.times.length ? g.times.reduce((a, b) => a + b, 0) / g.times.length : 0;
@@ -493,7 +494,7 @@ async function results() {
 
   let rec, stars = 0;
   if (g.mode === 'practice') {
-    stars = practiceStars(acc, avg);
+    stars = practiceStars(acc);
     rec = Store.recordPractice(g.pid, g.table, total, stars);
   } else {
     rec = Store.recordScore(g.mode, { pid: g.pid, name: g.name, score: total, level: g.level, acc: Math.round(acc * 100), ...(g.mode === 'arcade' && { diff: g.diff }) });
@@ -509,7 +510,7 @@ async function results() {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const alive = () => G === g && G.token === token && screen === 'results';
   const rows = [
-    ['CORRECT', `${g.correct}/${answered}`],
+    g.mode === 'practice' ? ['FIRST TRY', `${firstTry}/${g.facts}`] : ['CORRECT', `${g.correct}/${answered}`],
     ['ACCURACY', `${Math.round(acc * 100)}%`],
     ['BEST STREAK', g.bestStreak],
     ['AVG TIME', avg ? avg.toFixed(1) + 's' : '-'],
@@ -550,7 +551,7 @@ async function results() {
     else if (rec.moreStars && rec.prevStars) add('NEW STAR RECORD!', 'pb');
     else if (!rec.prevBest) add('FIRST RUN DONE!', 'gold');
     else add(`YOUR BEST: ${fmt(rec.prevBest)}`, 'dim');
-    if (stars < 3) add(stars < 2 ? 'GET 90% FOR 2 STARS' : '100% AND UNDER 3s FOR 3 STARS', 'dim');
+    if (stars < 3) add(stars < 2 ? 'GET 90% FOR 2 STARS' : 'NO MISSES FOR 3 STARS', 'dim');
     if (stars === 3 || (rec.isPB && rec.prevBest)) celebrate();
   } else {
     if (rec.isPB && !rec.firstGame) { add('NEW PERSONAL BEST!', 'pb'); celebrate(); }

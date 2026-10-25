@@ -27,8 +27,10 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/multihero
   | Hard   | 4.5s  | 1.8s  | x1.5   |
 
 - **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score. Same x1/x10/x2 removal as arcade.
-- **Practice**: one table, 20 questions, no lives, no timeout. Missed facts come back a few
-  questions later. Stars: 1 at 70%, 2 at 90%, 3 at 100% with an average under 3s.
+- **Practice**: one table, every fact once each way round, the square only once (19 facts for
+  tables 1-10, 23 for 11 and 12), shuffled. No lives, no timer. A missed fact comes back a few questions later, and the run
+  ends when all of them are answered right. Stars count first-try accuracy only: 1 at 70%, 2 at
+  90%, 3 with no misses.
 
 ## Scoring
 
