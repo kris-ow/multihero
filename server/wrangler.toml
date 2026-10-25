@@ -5,4 +5,4 @@ compatibility_date = "2025-09-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "multihero-board"
-database_id = "FILL-IN-AFTER-CREATE"
+database_id = "ae70326a-3ca3-44c8-9988-e479fe4b87b0"

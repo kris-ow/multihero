@@ -1,8 +1,8 @@
-// Global board client (server/worker.js). With no API address every global feature stays hidden,
+// Global board client (server/worker.js; deploy: CI=true bunx wrangler deploy in server/). With no API address every global feature stays hidden,
 // so the game works the same without the server.
 import { SEASON } from './rules.js';
 
-const API = location.hostname === 'localhost' ? 'http://localhost:8787' : '';
+const API = location.hostname === 'localhost' ? 'http://localhost:8787' : 'https://multihero-board.sham4n.workers.dev';
 export const enabled = () => !!API;
 
 // Resolves to the JSON body, or { error, offline } when the server can't be reached.
