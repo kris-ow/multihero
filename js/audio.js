@@ -1,5 +1,5 @@
-// All sound is synthesised: an 80s synth rock band (overdriven power-chord guitar, filtered saw
-// bass, brass stabs, saw lead with vibrato and echo, drum machine) on a lookahead sequencer, plus SFX.
+// All sound is synthesised: classical themes played by a synth band (saw bass, warm pad, arp,
+// saw/square lead with vibrato and echo, drum machine) on a lookahead sequencer, plus SFX.
 // Nothing plays until unlock() runs inside a user gesture (iOS and Chrome autoplay rules).
 
 let ctx = null, master, musicBus, sfxBus, noiseBuf, P25;
@@ -95,55 +95,28 @@ function bass(t, m, dur, dest, vol = 0.34) {
   o.start(t); o.stop(t + dur + 0.02);
 }
 
-// Synth-brass stab: detuned saws with a filter that snaps shut.
-function stab(t, notes, dur, dest, vol = 0.05) {
-  const f = lowpass(3200, 2), g = ctx.createGain();
-  f.frequency.setValueAtTime(3200, t);
-  f.frequency.exponentialRampToValueAtTime(500, t + 0.18);
+// Warm pad: detuned saws under a slowly opening lowpass, held for the whole chord.
+function pad(t, notes, dur, dest, vol) {
+  const f = lowpass(600, 1), g = ctx.createGain();
+  f.frequency.setValueAtTime(600, t);
+  f.frequency.linearRampToValueAtTime(1500, t + dur * 0.6);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol, t + 0.005);
-  g.gain.setValueAtTime(vol * 0.7, t + dur * 0.7);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  g.gain.linearRampToValueAtTime(vol, t + 0.08);
+  g.gain.setValueAtTime(vol, t + Math.max(0.1, dur - 0.08));
+  g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.06);
   f.connect(g).connect(dest);
-  for (const m of notes) for (const dt of [-12, 12]) {
+  for (const m of notes) for (const dt of [-8, 8]) {
     const o = ctx.createOscillator();
     o.type = 'sawtooth';
     o.frequency.value = mtof(m);
     o.detune.value = dt;
     o.connect(f);
-    o.start(t); o.stop(t + dur + 0.02);
+    o.start(t); o.stop(t + dur + 0.1);
   }
 }
 
-// Overdriven guitar: power-chord saws summed into a tanh waveshaper and a speaker-cab lowpass.
-function amp() {
-  const shaper = ctx.createWaveShaper(), n = 1024, curve = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; curve[i] = Math.tanh(x * 9); }
-  shaper.curve = curve; shaper.oversample = '4x';
-  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90;
-  const cab = lowpass(3000, 0.9), cab2 = lowpass(4500, 0.7), g = ctx.createGain();
-  g.gain.value = 0.14;
-  hp.connect(shaper).connect(cab).connect(cab2).connect(g);
-  return { input: hp, output: g };
-}
-
-// Power chord (root, fifth, octave). Muted = short and dark, like a palm-muted chug.
-function guitar(t, root, dur, dest, muted = false) {
-  const g = ctx.createGain(), f = lowpass(muted ? 700 : 5000, 0.7);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.35, t + 0.004);
-  g.gain.setValueAtTime(0.3, t + dur * 0.75);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  f.connect(g).connect(dest);
-  for (const [iv, dt] of [[0, -6], [7, 5], [12, 0]]) {
-    const o = ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.value = mtof(root + iv);
-    o.detune.value = dt;
-    o.connect(f);
-    o.start(t); o.stop(t + dur + 0.02);
-  }
-}
+// Short plucked chord (the "pah" of an oom-pah).
+const pluck = (t, notes, dur, dest, vol = 0.035) => notes.forEach(m => tone(t, mtof(m), dur, { wave: 'triangle', vol, dest }));
 
 const tom = (t, f, d) => tone(t, f, 0.22, { wave: 'sine', vol: 0.7, slide: f * 0.5, dest: d });
 const crash = (t, d) => noise(t, 1.4, { vol: 0.12, hp: 4500, dest: d });
@@ -172,60 +145,72 @@ const clap = (t, d) => { for (const o of [0, 0.012, 0.024]) noise(t + o, 0.09, {
 const hat = (t, d, v = 0.06) => noise(t, 0.03, { vol: v, hp: 8000, dest: d });
 
 // ---------- songs ----------
+// Classical themes arranged for synth. Each song plays its score twice: a sparse first
+// pass, then a full one, so the loop is over a minute and the restart is not obvious.
 const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const toMidi = s => { const m = /^([A-G])(#?)(\d)$/.exec(s); return 12 * (+m[3] + 1) + NOTE[m[1]] + (m[2] ? 1 : 0); };
 
-// One string per bar, 16 steps. "-" holds the previous note, "." is a rest.
-function parse(bars) {
+// One string per bar of `per` tokens (8 = eighths, 16 = sixteenths); "|" is ignored, "-" holds
+// the previous note, "." is a rest. Returns 16 steps per bar: [midi, steps] or null.
+function parse(bars, per, transpose = 0) {
+  const k = 16 / per;
   return bars.map(bar => {
-    const tk = bar.trim().split(/\s+/), out = new Array(16).fill(null);
-    for (let i = 0; i < 16; i++) {
+    const tk = bar.trim().split(/\s+/).filter(x => x !== '|'), out = new Array(16).fill(null);
+    if (tk.length !== per) throw new Error(`bar has ${tk.length} tokens, want ${per}: ${bar}`);
+    for (let i = 0; i < per; i++) {
       if (tk[i] === '-' || tk[i] === '.') continue;
       let len = 1;
       while (tk[i + len] === '-') len++;
-      out[i] = [toMidi(tk[i]), len];
+      out[i * k] = [toMidi(tk[i]) + transpose, len * k];
     }
     return out;
   });
 }
 
-const CHORDS = {
-  Am: { root: 45, pad: [57, 60, 64], arp: [57, 60, 64, 69] },
-  F:  { root: 41, pad: [57, 60, 65], arp: [53, 57, 60, 65] },
-  C:  { root: 48, pad: [55, 60, 64], arp: [55, 60, 64, 67] },
-  G:  { root: 43, pad: [55, 59, 62], arp: [55, 59, 62, 67] },
-  E:  { root: 40, pad: [56, 59, 64], arp: [56, 59, 64, 68] },
-};
+// "Am", "F#", "D": bass root in E2..D#3, pad triad voiced into G3..F#4, arp = pad plus octave.
+function chord(name) {
+  const m = /^([A-G])(#?)(m?)$/.exec(name), pc = NOTE[m[1]] + (m[2] ? 1 : 0);
+  const root = 36 + pc + (pc < 4 ? 12 : 0);
+  const pad = [0, m[3] ? 3 : 4, 7].map(iv => 55 + ((pc + iv - 55) % 12 + 12) % 12).sort((a, b) => a - b);
+  return { root, pad, arp: [...pad, pad[0] + 12] };
+}
+const CH = {};
+const chordAt = (bar, i) => { const h = bar.split('|'), n = h[Math.floor(i * h.length / 16)]; return CH[n] || (CH[n] = chord(n)); };
+
+// Grieg, In the Hall of the Mountain King: theme in B minor twice, the F# major answer twice,
+// theme twice more.
+const MK_A = ['B3 C#4 D4 E4 F#4 D4 F#4 -', 'F4 C#4 F4 - E4 C4 E4 -', 'B3 C#4 D4 E4 F#4 D4 F#4 B4', 'A4 F#4 D4 F#4 A4 - - -'];
+const MK_B = ['F#4 G#4 A#4 B4 C#5 A#4 C#5 -', 'D5 A#4 D5 - C#5 A#4 C#5 -', 'F#4 G#4 A#4 B4 C#5 A#4 C#5 -', 'D5 A#4 D5 - C#5 - - -'];
+const MK_AC = ['Bm', 'F#|C', 'Bm', 'D'], MK_BC = ['F#', 'F#', 'F#', 'F#'];
+
+// Pachelbel, Canon in D: the ground bass under the first three violin variations, and, as in
+// the original, a second voice playing each variation one cycle behind the first.
+const CN_REST = '. . . . . . . .';
+const CN_V = [['F#5 - E5 - D5 - C#5 -', 'B4 - A4 - B4 - C#5 -'], ['D5 - C#5 - B4 - A4 -', 'G4 - F#4 - G4 - E4 -'],
+  ['D5 F#5 A5 G5 F#5 D5 F#5 E5', 'D5 B4 D5 A4 G4 B4 A4 G4']];
+const CN_LEAD = [[CN_REST, CN_REST], ...CN_V, ...CN_V].flat(), CN_COUNTER = [[CN_REST, CN_REST], [CN_REST, CN_REST], ...CN_V, CN_V[0], CN_V[1]].flat();
+const CN_C = Array(7).fill(['D|A|Bm|F#m', 'G|D|G|A']).flat();
+
+// Mozart, Rondo alla Turca (A minor): theme, theme with its ending, the C major episode, theme
+// again. Two 2/4 bars per line, each ending with the pickup into the next phrase.
+const RT_1 = 'C5 - - . D5 C5 B4 C5 | E5 - - . F5 E5 D#5 E5', RT_2 = 'B5 A5 G#5 A5 B5 A5 G#5 A5';
+const RT_END = [`${RT_2} | C6 - - - A5 - B5 -`, 'C6 - B5 - A5 - G#5 - | A5 - E5 - F5 - D5 -'];
+const RT_EP = ['G5 - G5 - A5 G5 F5 E5 | D5 - - - . . E5 F5', 'G5 - G5 - A5 G5 F5 E5 | D5 - - - . . C5 D5',
+  'E5 - E5 - F5 E5 D5 C5 | B4 - - - . . C5 D5', 'E5 - E5 - F5 E5 D5 C5 | B4 - - - B4 A4 G#4 A4'];
+const RT = [RT_1, `${RT_2} | C6 - - - A5 - C6 -`, 'B5 - A5 - G#5 - A5 - | B5 - A5 - G#5 - A5 -', 'B5 - A5 - G#5 - F#5 - | E5 - - - B4 A4 G#4 A4',
+  RT_1, ...RT_END, 'C5 - - - B4 - - - | A4 - - - . . E5 F5', ...RT_EP,
+  RT_1, ...RT_END, 'C5 - - - B4 - - - | A4 - - - B4 A4 G#4 A4'];
+const RT_C = ['Am|Am', 'E|Am', 'E|Am', 'E|E', 'Am|Am', 'E|Am', 'E|Dm', 'E|Am',
+  'C|G', 'C|G', 'Am|E', 'Am|E', 'Am|Am', 'E|Am', 'E|Dm', 'E|Am'];
 
 const SONGS = {
-  title: {
-    bpm: 150,
-    chords: ['Am', 'Am', 'F', 'G', 'Am', 'Am', 'F', 'E'],
-    lead: parse([
-      'A4 - - - - - E4 - A4 - B4 - C5 - - -',
-      'B4 - A4 - G4 - A4 - - - - - . . . .',
-      'F4 - - - A4 - C5 - F5 - - - E5 - D5 -',
-      'D5 - - - B4 - - - G4 - A4 - B4 - D5 -',
-      'E5 - - - - - D5 - C5 - - - B4 - C5 -',
-      'A4 - - - - - - - . . A4 - C5 - E5 -',
-      'F5 - - - E5 - - - D5 - - - C5 - D5 -',
-      'E5 - - - - - - - G#4 - - - B4 - - -',
-    ]),
-  },
+  title: { bpm: 84, style: 'canon', chords: CN_C, lead: parse(CN_LEAD, 8, -12), counter: parse(CN_COUNTER, 8, -12) },
   game: {
-    bpm: 138, builds: true,
-    chords: ['Am', 'F', 'C', 'G', 'Am', 'F', 'C', 'E'],
-    lead: parse([
-      'A4 - A4 - C5 - A4 - D5 - C5 - A4 - G4 -',
-      'A4 - - - F4 - - - C5 - - - A4 - - -',
-      'G4 - G4 - C5 - G4 - E5 - D5 - C5 - G4 -',
-      'B4 - - - D5 - - - G4 - A4 - B4 - D5 -',
-      'E5 - E5 - D5 - C5 - D5 - C5 - A4 - - -',
-      'C5 - - - A4 - - - F4 - A4 - C5 - - -',
-      'E5 - - - D5 - - - C5 - - - G4 - - -',
-      'G#4 - - - B4 - - - E5 - - - D5 - B4 -',
-    ]),
+    bpm: 138, builds: true, style: 'march',
+    chords: [...MK_AC, ...MK_AC, ...MK_BC, ...MK_BC, ...MK_AC, ...MK_AC],
+    lead: parse([...MK_A, ...MK_A, ...MK_B, ...MK_B, ...MK_A, ...MK_A], 8),
   },
+  hardcore: { bpm: 150, builds: true, style: 'turca', chords: RT_C, lead: parse(RT, 16, -12) },
 };
 
 let wanted = null, current = null, song = null, timer = null, step = 0, nextTime = 0, bpm = 120, intensity = 0;
@@ -236,43 +221,72 @@ function mixer() {
   const bus = (freq, q, vol = 1) => { const f = lowpass(freq, q), g = ctx.createGain(); g.gain.value = vol; f.connect(g).connect(out); return f; };
   const echo = ctx.createDelay(1), fb = ctx.createGain(), wet = ctx.createGain(), dark = lowpass(1800);
   echo.delayTime.value = 0.75 * 60 / bpm; // dotted eighth
-  fb.gain.value = 0.33; wet.gain.value = 0.3;
+  fb.gain.value = 0.3; wet.gain.value = 0.28;
   echo.connect(dark).connect(fb).connect(echo);
   dark.connect(wet).connect(out);
-  const gtr = amp(); gtr.output.connect(out);
-  const m = { out, echo, drums: out, gtr: gtr.input, bass: bus(2400, 0.7), pad: bus(1300, 1), lead: bus(2800, 1.5), arp: bus(2200, 0.7, 0.8) };
+  const m = { out, echo, drums: out, bass: bus(2400, 0.7), pad: bus(1600, 0.7), lead: bus(2800, 1.2), arp: bus(2200, 0.7, 0.8) };
   m.lead.connect(echo); m.arp.connect(echo);
   return m;
 }
 
-// Synth rock: palm-muted power-chord chugs with open accents, synth stabs, rock beat, tom fill
-// every 4th bar. Songs marked `builds` add layers as the level (intensity) rises.
+// Each style is the band's part around the tune: bass line and drums for one 16th step.
+// `full` is the second pass (or a high level); `lvl` only rises in songs marked `builds`.
+const STYLES = {
+  // Mountain King: staccato root-fifth march, eighth-note octaves once it gets going.
+  march: { dbl: -12, bass(t, i, ch, sd, m, full, lvl) {
+    if (full || lvl >= 3) { if (i % 2 === 0) bass(t, ch.root + (i % 4 ? 12 : 0), sd * 1.2, m.bass, 0.26); }
+    else if (i % 4 === 0) bass(t, ch.root + (i % 8 ? 7 : 0), sd * 1.4, m.bass, 0.3);
+  }, drums(t, i, sd, m, full, lvl) {
+    if (i === 0 || i === 8 || (lvl >= 5 && i % 4 === 0)) kick(t, m.drums);
+    if (full && (i === 4 || i === 12)) snare(t, m.drums);
+    if (i % 4 === 2 || (full && i % 2 === 0) || (lvl >= 4 && i % 2)) hat(t, m.drums, i % 2 ? 0.025 : 0.045);
+  } },
+  // Canon: legato ground bass, octave bounces and a soft backbeat on the full pass.
+  canon: { dbl: 12, bass(t, i, ch, sd, m, full) {
+    if (i % 4 === 0) bass(t, ch.root, sd * 3.8, m.bass, 0.28);
+    else if (full && i % 4 === 2) bass(t, ch.root + 12, sd * 1.5, m.bass, 0.16);
+  }, drums(t, i, sd, m, full) {
+    if (!full) return;
+    if (i === 0 || i === 10) kick(t, m.drums);
+    if (i === 4 || i === 12) snare(t, m.drums);
+    if (i % 2 === 0) hat(t, m.drums, i % 4 ? 0.025 : 0.04);
+  } },
+  // Rondo alla Turca: oom-pah, bass on the beat and a light plucked chord off it.
+  turca: { dbl: 12, bass(t, i, ch, sd, m, full, lvl) {
+    if (i % 4 === 0) bass(t, ch.root + (i % 8 ? 7 : 0), sd * 1.6, m.bass, 0.3);
+    if (i % 4 === 2) pluck(t, ch.pad, sd * 1.2, m.arp, full || lvl >= 3 ? 0.04 : 0.03);
+  }, drums(t, i, sd, m, full, lvl) {
+    if (i % 8 === 0 || (full && i % 4 === 0) || lvl >= 5 && i % 4 === 0) kick(t, m.drums);
+    if (full && (i === 4 || i === 12)) snare(t, m.drums);
+    if (i % 4 === 2 || (lvl >= 3 && i % 2 === 0)) hat(t, m.drums, 0.04);
+  } },
+};
+
 function scheduleStep(s, t) {
-  const bar = Math.floor(s / 16) % song.def.lead.length, i = s % 16;
-  const ch = CHORDS[song.def.chords[bar]];
-  const sd = 60 / bpm / 4, m = song.mix, builds = song.def.builds;
+  const def = song.def, n = def.lead.length, abs = Math.floor(s / 16), bar = abs % n, i = s % 16;
+  const sd = 60 / bpm / 4, m = song.mix, st = STYLES[def.style];
+  const lvl = def.builds ? intensity : 0, full = abs % (2 * n) >= n || lvl >= 6;
+  const spec = def.chords[bar], ch = chordAt(spec, i), span = 16 / spec.split('|').length;
 
-  const accent = i === 0 || i === 6 || i === 10;
-  if (accent) guitar(t, ch.root, sd * (i === 10 ? 5.5 : 3.5), m.gtr);
-  else if (i % 2 === 0) guitar(t, ch.root, sd * 0.9, m.gtr, true);
-  if (i % 2 === 0) bass(t, ch.root, sd * 1.8, m.bass, 0.28);
-  if (accent) stab(t, ch.pad.map(n => n + 12), sd * (i === 10 ? 4 : 2), m.pad, 0.025);
-  if (builds && intensity > 1) tone(t, mtof(ch.arp[s % 4] + 12), sd * 0.9, { wave: 'triangle', vol: 0.07, dest: m.arp });
+  if (i % span === 0) pad(t, ch.pad, sd * span, m.pad, full ? 0.022 : 0.016);
+  st.bass(t, i, ch, sd, m, full, lvl);
+  if ((full || lvl >= 2) && i % 2 === 0) tone(t, mtof(ch.arp[(i / 2) % 4] + 12), sd * 1.6, { wave: 'triangle', vol: 0.045, dest: m.arp });
 
-  const fill = bar % 4 === 3 && i >= 12;
-  const fourFloor = builds && intensity >= 5;
-  if ((fourFloor ? i % 4 === 0 : i === 0 || i === 8 || i === 10) && !fill) kick(t, m.drums);
-  if ((i === 4 || i === 12) && !fill) { snare(t, m.drums); clap(t, m.drums); }
+  const fill = full && bar % 8 === 7 && i >= 12;
   if (fill) tom(t, [220, 175, 140, 110][i - 12], m.drums);
-  if (i % 2 === 0) hat(t, m.drums, 0.05);
-  else if (builds && intensity > 3) hat(t, m.drums, 0.03);
-  if (i === 0 && bar % 4 === 0) crash(t, m.drums);
+  else st.drums(t, i, sd, m, full, lvl);
+  if (i === 0 && bar % 8 === 0 && full) crash(t, m.drums);
 
-  const n = song.def.lead[bar][i];
-  if (n) {
-    lead(t, n[0], n[1] * sd * 0.95, m.lead, 0.07, 'sawtooth');
-    lead(t, n[0] - 12, n[1] * sd * 0.95, m.lead, 0.05, 'square');
+  const note = def.lead[bar][i];
+  if (note) {
+    const d = note[1] * sd * 0.92;
+    if (full) {
+      lead(t, note[0], d, m.lead, 0.065, 'sawtooth');
+      lead(t, note[0] + st.dbl, d, m.lead, st.dbl > 0 ? 0.025 : 0.045, 'square');
+    } else lead(t, note[0], d, m.lead, 0.07, 'square');
   }
+  const cn = def.counter && def.counter[bar][i];
+  if (cn) lead(t, cn[0], cn[1] * sd * 0.92, m.lead, full ? 0.04 : 0.03, 'triangle');
 }
 
 function pump() {
@@ -313,7 +327,7 @@ export function playSong(name) {
 
 export function setLevel(level, base = 138) {
   intensity = level;
-  if (current !== 'game') return;
+  if (!song || !song.def.builds) return;
   bpm = Math.min(180, base + (level - 1) * 5);
   song.mix.echo.delayTime.setTargetAtTime(0.75 * 60 / bpm, ctx.currentTime, 0.1);
 }
@@ -324,7 +338,7 @@ export async function renderSong(name, seconds, level = 1) {
   build(off);
   current = name; bpm = SONGS[name].bpm; intensity = 0;
   song = { def: SONGS[name], mix: mixer() };
-  if (name === 'game') { current = 'game'; setLevel(level); }
+  setLevel(level, bpm);
   for (step = 0, nextTime = 0.05; nextTime < seconds; step++, nextTime += 60 / bpm / 4) scheduleStep(step, nextTime);
   return off.startRendering();
 }

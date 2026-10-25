@@ -210,7 +210,7 @@ function startGame(mode, table = 0, diff = 'normal') {
   $('.timer').classList.toggle('off', false);
   renderHUD();
   show('game');
-  Audio.playSong('game');
+  Audio.playSong(mode === 'hardcore' ? 'hardcore' : 'game');
   Audio.setLevel(1, G.cfg.bpm);
   FX.setSpeed(G.cfg.fx);
   countdown(G.token);

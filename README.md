@@ -46,6 +46,6 @@ questions weighted towards slow or missed facts, and the MY STATS grid shows the
 ## Files
 
 - `js/main.js`: screens, game loop, input, results
-- `js/audio.js`: chiptune sequencer and SFX
+- `js/audio.js`: synth arrangements of three classical themes, sequencer and SFX
 - `js/fx.js`: synthwave background, particles, flashes
 - `js/storage.js`: localStorage model
