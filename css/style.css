@@ -365,3 +365,8 @@ h2 {
 @media (pointer: fine) {
   .key { height: clamp(44px, 7dvh, 58px); font-size: 20px; }
 }
+
+/* ---------- global board ---------- */
+.badge.join { color: var(--cyan); margin-top: 6px; }
+.badge.join .row { justify-content: center; gap: 12px; margin: 8px 0 4px; }
+.badge.join small { display: block; color: var(--dim); font-size: 9px; }

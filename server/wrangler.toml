@@ -1,0 +1,8 @@
+name = "multihero-board"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "multihero-board"
+database_id = "FILL-IN-AFTER-CREATE"

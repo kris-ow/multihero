@@ -1,6 +1,8 @@
 import * as Store from './storage.js';
 import * as Audio from './audio.js';
 import * as FX from './fx.js';
+import * as Global from './global.js';
+import { MODES, MAX_LIVES, configFor, multFor, focusPool, dropped, timeLimit as limitFor, points, accuracyBonus, levelGivesLife } from './rules.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -70,7 +72,11 @@ function renderPlayers() {
     row.innerHTML = `<button class="btn${p === cur ? ' cur' : ''}" style="color:${p.color}">${p.name}<small>${best ? 'BEST ' + fmt(best) : 'NEW'}</small></button><button class="del" aria-label="Delete">X</button>`;
     row.firstChild.onclick = () => { Audio.sfx('select'); Store.setCurrent(p.id); editing = false; goMenu(); };
     row.lastChild.onclick = () => {
-      if (confirm(`Delete ${p.name} and all their scores?`)) { Store.deletePlayer(p.id); renderPlayers(); }
+      if (confirm(`Delete ${p.name} and all their scores?`)) {
+        if (p.gkey) Global.forget(p.gkey); // their rows leave the global board too
+        Store.deletePlayer(p.id);
+        renderPlayers();
+      }
     };
     list.appendChild(row);
   }
@@ -124,39 +130,13 @@ function renderTables() {
 }
 
 // ---------- game ----------
-const MODES = {
-  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.2, perLevel: 8, mul: 1, bpm: 138, fx: 0.6 },
-  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 3, bpm: 150, fx: 0.9 },
-  practice: { lives: Infinity, base: 6, mul: 1, bpm: 132, fx: 0.6 },
-};
-// Arcade difficulty: more thinking time costs points, so all three can share one board. Every
-// speed ends at the same 2.2s floor, so no mode lets a strong player survive forever; the
-// multipliers come from a balance simulation (advisor repo, research/multihero-sim).
-const DIFFS = {
-  easy:   { base: 14, step: 0.8, min: 2.2, mul: 0.35, bpm: 128, fx: 0.4 },
-  normal: {},
-  hard:   { base: 4.5, step: 0.4, min: 2.2, mul: 3.5, bpm: 146, fx: 0.8 },
-};
-// The speed bonus is judged against a fixed 6s, not the mode's clock, so a slow clock pays no extra.
-const SPEED_REF = 6;
 const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
-const MAX_LIVES = 5;
-const multFor = streak => Math.min(8, 1 + Math.floor(streak / 5));
 
 let G = null, lastGame = null;
 
-// Arcade eases in: the friendly tables first, the 7s and 8s from level 4.
-function focusPool(level) {
-  if (level <= 1) return [2, 5, 10];
-  if (level === 2) return [2, 3, 4, 5, 10];
-  if (level === 3) return [2, 3, 4, 5, 6, 9, 10];
-  return null;
-}
-
 function pickFact() {
   const max = G.cfg.max, pool = G.mode === 'arcade' ? focusPool(G.level) : null;
-  // Once warmed up (arcade and hardcore), the giveaway tables go: x1 and x10 from level 4, x2 from level 6.
-  const drop = G.mode === 'practice' ? [] : G.level >= 6 ? [1, 2, 10] : G.level >= 4 ? [1, 10] : [];
+  const drop = G.mode === 'practice' ? [] : dropped(G.level);
   const cands = [];
   let total = 0;
   for (let a = 1; a <= max; a++) for (let b = a; b <= max; b++) {
@@ -190,18 +170,16 @@ function buildDeck(table) {
   return deck;
 }
 
-const timeLimit = () => G.cfg.practice || G.mode === 'practice'
-  ? G.cfg.base
-  : Math.max(G.cfg.min, G.cfg.base - (G.level - 1) * G.cfg.step);
+const timeLimit = () => (G.mode === 'practice' ? G.cfg.base : limitFor(G.cfg, G.level));
 
 function startGame(mode, table = 0, diff = 'normal') {
   const p = Store.currentPlayer();
   if (!p) { openNew(); return; }
   clearTimeout(G?.timer);
   G = {
-    mode, table, diff, cfg: mode === 'arcade' ? { ...MODES.arcade, ...DIFFS[diff] } : MODES[mode], pid: p.id, name: p.name,
+    mode, table, diff, cfg: configFor(mode, diff), pid: p.id, name: p.name,
     lives: MODES[mode].lives, level: 1, score: 0, streak: 0, bestStreak: 0,
-    correct: 0, wrong: 0, times: [], missed: [], recent: [],
+    correct: 0, wrong: 0, times: [], missed: [], recent: [], log: [],
     deck: mode === 'practice' ? buildDeck(table) : null, qi: 0,
     input: '', phase: 'ready', timer: null, token: {},
   };
@@ -278,8 +256,10 @@ function backspace() {
 }
 
 function submit(timedOut) {
-  const t = (performance.now() - G.qStart) / 1000;
+  // Whole milliseconds, so the global board's re-check of the log scores exactly the same.
+  const t = Math.round(performance.now() - G.qStart) / 1000;
   const ok = !timedOut && Number(G.input) === G.q.ans;
+  if (G.mode !== 'practice') G.log.push([G.q.a, G.q.b, timedOut ? null : Number(G.input), t]);
   Store.recordFact(G.pid, G.q.a, G.q.b, ok, t);
   if (ok) onCorrect(t); else onWrong(timedOut);
 }
@@ -319,8 +299,7 @@ function onCorrect(t) {
   G.bestStreak = Math.max(G.bestStreak, G.streak);
   G.times.push(t);
   const mult = multFor(G.streak), prevMult = multFor(G.streak - 1);
-  const frac = clamp(1 - t / SPEED_REF, 0, 1);
-  const pts = Math.round((100 + 400 * frac) * mult * (1 + (G.level - 1) * 0.25) * G.cfg.mul / 10) * 10;
+  const pts = points(t, G.streak, G.level, G.cfg.mul);
   G.score += pts;
   G.phase = 'feedback';
   G.skipAfter = 0;
@@ -374,7 +353,7 @@ function levelUp() {
   Audio.sfx('level');
   Audio.setLevel(G.level, G.cfg.bpm);
   FX.setSpeed(G.cfg.fx + (G.level - 1) * 0.3);
-  if ((G.level - 1) % 3 === 0 && G.lives < MAX_LIVES) {
+  if (levelGivesLife(G.level) && G.lives < MAX_LIVES) {
     G.lives++;
     G.gained = true;
     setTimeout(() => { float('1UP!', '#ff2050', true); Audio.sfx('oneup'); }, 450);
@@ -490,7 +469,7 @@ async function results() {
   // Practice: the share of facts right first time (every fact is answered right in the end).
   const firstTry = g.mode === 'practice' ? g.facts - new Set(g.missed.map(q => q.join('x'))).size : 0;
   const acc = g.mode === 'practice' ? firstTry / g.facts : answered ? g.correct / answered : 0;
-  const bonus = Math.round(g.score * 0.5 * acc * acc / 10) * 10;
+  const bonus = accuracyBonus(g.score, acc);
   const total = g.score + bonus;
   const avg = g.times.length ? g.times.reduce((a, b) => a + b, 0) / g.times.length : 0;
   const fastest = g.times.length ? Math.min(...g.times) : 0;
@@ -564,6 +543,7 @@ async function results() {
     else add(`YOUR BEST: ${fmt(rec.prevBest)}. KEEP GOING!`, 'dim');
     if (rec.deviceRank === 1 && Store.top(g.mode).length > 1) add('DEVICE CHAMPION!', 'cyan');
     else if (rec.deviceRank <= 10) add(`#${rec.deviceRank} ON THE BIG BOARD`, 'cyan');
+    globalRun(g, rec, (text, cls) => alive() && add(text, cls));
   }
 
   const seen = new Set(), list = [];
@@ -580,6 +560,44 @@ async function results() {
   Audio.playSong('title');
 }
 
+// ---------- global board ----------
+// Sends the run if this profile joined; on its first personal best, offers to join.
+function globalRun(g, rec, add) {
+  const p = Store.playerById(g.pid);
+  if (!Global.enabled() || !p) return;
+  const run = { mode: g.mode, diff: g.mode === 'arcade' ? g.diff : null, name: p.name, key: p.gkey, log: g.log };
+  if (p.global) sendRun(run, add);
+  else if (p.global === undefined && rec.isPB) askJoin(p, run, add);
+}
+
+async function sendRun(run, add) {
+  const r = await Global.submit(run);
+  if (r.offline) { Store.queueRun(run); return; } // retried on the next launch
+  if (!r.error && add && r.best === r.score) add(`#${r.rank} IN THE WORLD!`, 'gold');
+}
+
+function askJoin(p, run, add) {
+  const box = document.createElement('div');
+  box.className = 'badge join';
+  box.innerHTML = `JOIN THE GLOBAL BOARD AS <b style="color:${p.color}">${p.name}</b>?
+    <div class="row"><button class="btn small go">YES</button><button class="btn small">NO</button></div>
+    <small>ONLY YOUR INITIALS AND SCORES ARE SHARED</small>`;
+  const [yes, no] = box.querySelectorAll('button');
+  yes.onclick = () => {
+    Store.setGlobal(p.id, true);
+    Audio.sfx('select');
+    box.remove();
+    sendRun({ ...run, key: p.gkey }, add);
+  };
+  no.onclick = () => {
+    Store.setGlobal(p.id, false);
+    Audio.sfx('back');
+    box.className = 'badge dim';
+    box.textContent = 'OK. YOUR SCORES STAY ON THIS DEVICE';
+  };
+  $('#r-badges').appendChild(box);
+}
+
 function celebrate() {
   Audio.sfx('best');
   FX.confetti(['#00f0ff', '#ff2bd6', '#ffe600', '#39ff14', '#ff8a00']);
@@ -588,19 +606,35 @@ function celebrate() {
 
 // ---------- high scores ----------
 let scMode = 'arcade', scScope = 'me';
+const dayMonth = ts => { const d = new Date(ts); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`; };
+
 function renderScores() {
   $$('#sc-mode .tab').forEach(t => t.classList.toggle('on', t.dataset.mode === scMode));
   $$('#sc-scope .tab').forEach(t => t.classList.toggle('on', t.dataset.scope === scScope));
+  if (scScope === 'global') { renderGlobal(); return; }
   const p = Store.currentPlayer();
   const list = Store.top(scMode, scScope === 'me' ? p?.id : null, 10);
   const ol = $('#score-list');
   if (!list.length) { ol.innerHTML = '<li class="empty">NO SCORES YET<br>GO PLAY!</li>'; return; }
   ol.innerHTML = list.map((s, i) => {
     const pl = Store.playerById(s.pid);
-    const d = new Date(s.date);
-    const date = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-    return `<li class="${s.id === lastGame?.entryId ? 'fresh' : ''}"><span class="rk">${i + 1}.</span><span style="color:${pl?.color || '#8a7ab8'}">${s.name}</span><span class="sc">${fmt(s.score)}</span><span class="mt">${s.diff ? DIFF_TAG[s.diff] + ' ' : ''}L${s.level} ${s.acc}%<br>${date}</span></li>`;
+    return `<li class="${s.id === lastGame?.entryId ? 'fresh' : ''}"><span class="rk">${i + 1}.</span><span style="color:${pl?.color || '#8a7ab8'}">${s.name}</span><span class="sc">${fmt(s.score)}</span><span class="mt">${s.diff ? DIFF_TAG[s.diff] + ' ' : ''}L${s.level} ${s.acc}%<br>${dayMonth(s.date)}</span></li>`;
   }).join('');
+}
+
+let globalReq = 0;
+async function renderGlobal() {
+  const ol = $('#score-list'), p = Store.currentPlayer(), req = ++globalReq;
+  ol.innerHTML = '<li class="empty">LOADING...</li>';
+  const [r, mine] = await Promise.all([Global.top(scMode), p?.gkey ? Global.tagFor(p.gkey) : null]);
+  if (req !== globalReq || scScope !== 'global' || screen !== 'scores') return;
+  if (r.error) { ol.innerHTML = `<li class="empty">${r.offline ? "CAN'T REACH THE<br>GLOBAL BOARD" : 'GLOBAL BOARD ERROR'}</li>`; return; }
+  let html = r.rows.map((s, i) => `<li class="${s.tag === mine ? 'fresh' : ''}"><span class="rk">${i + 1}.</span><span style="color:${s.tag === mine ? p.color : '#8a7ab8'}">${s.name}</span><span class="sc">${fmt(s.score)}</span><span class="mt">${s.diff ? DIFF_TAG[s.diff] + ' ' : ''}L${s.level} ${s.acc}%<br>${dayMonth(s.created)}</span></li>`).join('')
+    || '<li class="empty">NO SCORES YET<br>BE THE FIRST!</li>';
+  if (p && !p.global) html += `<li class="empty"><button class="btn small go" id="sc-join">JOIN AS ${p.name}</button></li>`;
+  else if (p && !r.rows.some(s => s.tag === mine)) html += '<li class="empty">YOUR NEXT GAME COUNTS!</li>';
+  ol.innerHTML = html;
+  $('#sc-join')?.addEventListener('click', () => { Store.setGlobal(p.id, true); Audio.sfx('select'); renderGlobal(); });
 }
 
 // ---------- stats ----------
@@ -757,6 +791,8 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- boot ----------
 Store.load();
+if (Global.enabled()) for (const run of Store.takeRuns()) sendRun(run);
+else $('#sc-scope [data-scope=global]').remove();
 $('#sc-season').textContent = `SEASON ${Store.SEASON}`;
 Audio.setMusic(Store.settings().music);
 Audio.setSfx(Store.settings().sfx);

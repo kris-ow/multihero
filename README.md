@@ -28,7 +28,7 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/multihero
 
   The speed bonus is measured against a fixed 6s in every mode.
 
-Scores belong to a season (`SEASON` in js/storage.js). A scoring change bumps it: the boards start
+Scores belong to a season (`SEASON` in js/rules.js). A scoring change bumps it: the boards start
 empty and the previous season's scores move to an archive in storage. Season 1 began on 2026-10-25
 with the rebalanced scoring.
 
@@ -54,6 +54,9 @@ questions weighted towards slow or missed facts, and the MY STATS grid shows the
 ## Files
 
 - `js/main.js`: screens, game loop, input, results
+- `js/rules.js`: scoring, levels and the run replay, shared with the server
+- `js/global.js`: global board client (hidden until the server address is set)
+- `server/`: the global board, a Cloudflare Worker + D1 (`schema.sql`); `bun server/dev.mjs` runs it locally on :8787
 - `js/audio.js`: synth arrangements of three classical themes, sequencer and SFX
 - `js/fx.js`: synthwave background, particles, flashes
 - `js/storage.js`: localStorage model

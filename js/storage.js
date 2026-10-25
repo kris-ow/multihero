@@ -1,11 +1,12 @@
+import { SEASON } from './rules.js';
+
 // Everything lives in one localStorage key, per device. Every access is guarded:
 // private windows and blocked storage must still give a playable (if forgetful) game.
 
 const KEY = 'times-turbo.v1'; // pre-rename name, kept so saved scores survive
 const MAX_SCORES = 300;
-// Scoring changes start a new season: the boards begin empty and the old scores move to the archive.
-// Season 1 started on 2026-10-25 with the rebalanced scoring.
-export const SEASON = 1;
+export { SEASON };
+
 export const COLORS = ['#00f0ff', '#ff2bd6', '#ffe600', '#39ff14', '#ff8a00', '#b48cff'];
 
 const blank = () => ({
@@ -14,6 +15,7 @@ const blank = () => ({
   season: SEASON,
   scores: { arcade: [], hardcore: [] },
   archive: {},           // season -> that season's scores (0 = before seasons)
+  pending: [],           // global-board runs not sent yet (offline)
   practice: {},          // pid -> { table: { best, stars } }
   facts: {},             // pid -> { "axb": { n, w, e, tm } }
   settings: { music: true, sfx: true },
@@ -63,6 +65,19 @@ export function addPlayer(name) {
 }
 
 export function setCurrent(id) { db.current = id; save(); }
+
+// Global board opt-in: undefined = not asked yet, true/false = the answer. The key identifies the
+// profile to the board and is made on joining.
+export function setGlobal(id, on) {
+  const p = playerById(id);
+  if (!p) return;
+  p.global = on;
+  if (on && !p.gkey) p.gkey = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(36).padStart(2, '0')).join('');
+  save();
+}
+
+export function queueRun(run) { db.pending = [...db.pending, run].slice(-20); save(); }
+export function takeRuns() { const runs = db.pending; db.pending = []; save(); return runs; }
 
 export function deletePlayer(id) {
   db.players = db.players.filter(p => p.id !== id);
