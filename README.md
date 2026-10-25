@@ -22,11 +22,13 @@ python3 -m http.server 8890 --directory /Users/admin/Projects/multihero
 
   | Speed  | Start | Floor | Points |
   |--------|-------|-------|--------|
-  | Easy   | 14s   | 5s    | x0.5   |
-  | Normal | 9s    | 2.6s  | x1     |
-  | Hard   | 4.5s  | 1.8s  | x1.5   |
+  | Easy   | 14s   | 2.2s  | x0.35  |
+  | Normal | 9s    | 2.2s  | x1     |
+  | Hard   | 4.5s  | 2.2s  | x3.5   |
 
-- **Hardcore**: up to 12x12, 7s down to 2.2s, 1.5x score. Same x1/x10/x2 removal as arcade.
+  The speed bonus is measured against a fixed 6s in every mode.
+
+- **Hardcore**: up to 12x12, 7s down to 2.2s, 3x score. Same x1/x10/x2 removal as arcade.
 - **Practice**: one table, every fact once each way round, the square only once (19 facts for
   tables 1-10, 23 for 11 and 12), shuffled. No lives, no timer. A missed fact comes back a few questions later, and the run
   ends when all of them are answered right. Stars count first-try accuracy only: 1 at 70%, 2 at

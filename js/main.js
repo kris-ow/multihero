@@ -125,16 +125,20 @@ function renderTables() {
 
 // ---------- game ----------
 const MODES = {
-  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.6, perLevel: 8, mul: 1, bpm: 138, fx: 0.6 },
-  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 1.5, bpm: 150, fx: 0.9 },
+  arcade:   { max: 10, lives: 3, base: 9, step: 0.7, min: 2.2, perLevel: 8, mul: 1, bpm: 138, fx: 0.6 },
+  hardcore: { max: 12, lives: 3, base: 7, step: 0.6, min: 2.2, perLevel: 8, mul: 3, bpm: 150, fx: 0.9 },
   practice: { lives: Infinity, base: 6, mul: 1, bpm: 132, fx: 0.6 },
 };
-// Arcade difficulty: more thinking time costs points, so all three can share one board.
+// Arcade difficulty: more thinking time costs points, so all three can share one board. Every
+// speed ends at the same 2.2s floor, so no mode lets a strong player survive forever; the
+// multipliers come from a balance simulation (advisor repo, research/multihero-sim).
 const DIFFS = {
-  easy:   { base: 14, step: 0.8, min: 5, mul: 0.5, bpm: 128, fx: 0.4 },
+  easy:   { base: 14, step: 0.8, min: 2.2, mul: 0.35, bpm: 128, fx: 0.4 },
   normal: {},
-  hard:   { base: 4.5, step: 0.4, min: 1.8, mul: 1.5, bpm: 146, fx: 0.8 },
+  hard:   { base: 4.5, step: 0.4, min: 2.2, mul: 3.5, bpm: 146, fx: 0.8 },
 };
+// The speed bonus is judged against a fixed 6s, not the mode's clock, so a slow clock pays no extra.
+const SPEED_REF = 6;
 const DIFF_TAG = { easy: 'E', normal: 'N', hard: 'H' };
 const MAX_LIVES = 5;
 const multFor = streak => Math.min(8, 1 + Math.floor(streak / 5));
@@ -315,7 +319,7 @@ function onCorrect(t) {
   G.bestStreak = Math.max(G.bestStreak, G.streak);
   G.times.push(t);
   const mult = multFor(G.streak), prevMult = multFor(G.streak - 1);
-  const frac = clamp(1 - t / G.limit, 0, 1);
+  const frac = clamp(1 - t / SPEED_REF, 0, 1);
   const pts = Math.round((100 + 400 * frac) * mult * (1 + (G.level - 1) * 0.25) * G.cfg.mul / 10) * 10;
   G.score += pts;
   G.phase = 'feedback';
@@ -325,7 +329,7 @@ function onCorrect(t) {
   const col = COMBO_COLORS[Math.min(mult, 6) - 1];
   float('+' + fmt(pts), '#ffe600', mult >= 3);
   if (t < 1.2) setTimeout(() => float('LIGHTNING!', '#00f0ff'), 90);
-  else if (frac > 0.7) setTimeout(() => float('FAST!', '#39ff14'), 90);
+  else if (t < G.limit * 0.3) setTimeout(() => float('FAST!', '#39ff14'), 90);
   const [x, y] = answerCenter();
   FX.burst(x, y, col, 12 + mult * 4, 0.8 + mult * 0.1);
   FX.flash('57,255,20', 0.08);
