@@ -757,6 +757,7 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- boot ----------
 Store.load();
+$('#sc-season').textContent = `SEASON ${Store.SEASON}`;
 Audio.setMusic(Store.settings().music);
 Audio.setSfx(Store.settings().sfx);
 FX.init();

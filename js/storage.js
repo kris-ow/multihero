@@ -3,12 +3,17 @@
 
 const KEY = 'times-turbo.v1'; // pre-rename name, kept so saved scores survive
 const MAX_SCORES = 300;
+// Scoring changes start a new season: the boards begin empty and the old scores move to the archive.
+// Season 1 started on 2026-10-25 with the rebalanced scoring.
+export const SEASON = 1;
 export const COLORS = ['#00f0ff', '#ff2bd6', '#ffe600', '#39ff14', '#ff8a00', '#b48cff'];
 
 const blank = () => ({
   players: [],
   current: null,
+  season: SEASON,
   scores: { arcade: [], hardcore: [] },
+  archive: {},           // season -> that season's scores (0 = before seasons)
   practice: {},          // pid -> { table: { best, stars } }
   facts: {},             // pid -> { "axb": { n, w, e, tm } }
   settings: { music: true, sfx: true },
@@ -22,6 +27,12 @@ export function load() {
     if (raw && typeof raw === 'object') {
       const b = blank();
       db = { ...b, ...raw, scores: { ...b.scores, ...raw.scores }, settings: { ...b.settings, ...raw.settings } };
+      if ((raw.season || 0) < SEASON) {
+        db.archive = { ...db.archive, [raw.season || 0]: db.scores };
+        db.scores = b.scores;
+        db.season = SEASON;
+        save();
+      }
     }
   } catch { db = blank(); }
   return db;
@@ -56,6 +67,7 @@ export function setCurrent(id) { db.current = id; save(); }
 export function deletePlayer(id) {
   db.players = db.players.filter(p => p.id !== id);
   for (const m of Object.keys(db.scores)) db.scores[m] = db.scores[m].filter(s => s.pid !== id);
+  for (const old of Object.values(db.archive)) for (const m of Object.keys(old)) old[m] = old[m].filter(s => s.pid !== id);
   delete db.practice[id];
   delete db.facts[id];
   if (db.current === id) db.current = db.players[0]?.id || null;
